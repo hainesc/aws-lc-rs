@@ -482,6 +482,47 @@ impl AsBigEndian<EcPrivateKeyBin<'static>> for PrivateKey {
     }
 }
 
+impl Clone for PrivateKey {
+    fn clone(&self) -> Self {
+        let alg = self.algorithm();
+        let evp_pkey = self.inner_key.get_evp_pkey().as_const();
+
+        let private_key_len = match alg.id {
+            AlgorithmID::X25519 => AlgorithmID::X25519.private_key_len(),
+            AlgorithmID::ECDH_P256 => AlgorithmID::ECDH_P256.private_key_len(),
+            AlgorithmID::ECDH_P384 => AlgorithmID::ECDH_P384.private_key_len(),
+            AlgorithmID::ECDH_P521 => AlgorithmID::ECDH_P521.private_key_len(),
+        };
+
+        let mut buffer = Vec::<u8>::with_capacity(private_key_len);
+        let mut out_len = private_key_len;
+        unsafe {
+            EVP_PKEY_get_raw_private_key(
+                *evp_pkey,
+                buffer.as_mut_slice().as_mut_ptr(),
+                &mut out_len,
+            );
+        }
+
+        let evp_pkey = if AlgorithmID::X25519 == alg.id {
+            LcPtr::new(unsafe {
+                EVP_PKEY_new_raw_private_key(
+                    EVP_PKEY_X25519,
+                    null_mut(),
+                    buffer.as_ptr(),
+                    AlgorithmID::X25519.private_key_len(),
+                )
+            })
+            .unwrap()
+        } else {
+            let ec_group = ec_group_from_nid(alg.id.nid()).unwrap();
+            let private_bn = LcPtr::<BIGNUM>::try_from(buffer.as_ref()).unwrap();
+            ec::evp_pkey_from_private(&ec_group.as_const(), &private_bn.as_const()).unwrap()
+        };
+        Self::new(alg, evp_pkey)
+    }
+}
+
 impl AsBigEndian<Curve25519SeedBin<'static>> for PrivateKey {
     /// Exposes the seed encoded as a big-endian fixed-length integer.
     ///

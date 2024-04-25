@@ -64,6 +64,11 @@ impl EphemeralPrivateKey {
     pub fn algorithm(&self) -> &'static Algorithm {
         self.0.algorithm()
     }
+
+    /// Clone a private, please aware that at normal case, you should not clone it.
+    pub fn clone(&self) -> Result<Self, Unspecified> {
+        Ok(Self(self.0.clone()))
+    }
 }
 
 /// Performs a key agreement with an ephemeral private key and the given public
